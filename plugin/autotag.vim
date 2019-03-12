@@ -30,6 +30,13 @@ if has("python") || has("python3")
    endif
 
    function! AutoTag()
+		let tagNewHash = system("ctags -o- ". expand("%:p") ." | sha256sum")
+		if !exists("b:tagOldHash")
+			return 0
+		endif
+		if tagNewHash ==# b:tagOldHash
+			return 0
+		endif
       if exists("b:netrw_method")
          return
       endif
@@ -41,6 +48,10 @@ if has("python") || has("python3")
       if exists(":TlistUpdate")
          TlistUpdate
       endif
+   endfunction
+
+   function! RecordTag()
+      let b:tagOldHash = system("ctags -o- ". expand("%:p") ." | sha256sum")
    endfunction
 
    function! AutoTagDebug()
@@ -55,6 +66,7 @@ if has("python") || has("python3")
    augroup autotag
       au!
       autocmd BufWritePost,FileWritePost * call AutoTag ()
+      autocmd BufWritePre * call RecordTag ()
    augroup END
 
 endif " has("python") or has("python3")

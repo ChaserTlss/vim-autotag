@@ -33,7 +33,7 @@ GLOBALS_DEFAULTS = dict(maxTagsFileSize=1024 * 1024 * 7,
 
 # Just in case the ViM build you're using doesn't have subprocess
 if sys.version < '2.4':
-    def do_cmd(cmd, cwd):
+    def __do_cmd(cmd, cwd):
         """ Python 2.3 has no subprocess """
         old_cwd = os.getcwd()
         os.chdir(cwd)
@@ -58,13 +58,19 @@ else:
     if sys.version >= '3':
         KW["universal_newlines"] = True
 
-    def do_cmd(cmd, cwd):
+    def __do_cmd(cmd, cwd):
         """ Abstract subprocess """
         proc = subprocess.Popen(cmd, cwd=cwd, **KW)
         stdout = proc.communicate()[0]
         return stdout.split("\n")
 
     from traceback import format_exc  # pylint: disable=wrong-import-position,wrong-import-order,ungrouped-imports
+
+def do_cmd(cmd, cwd):
+    f = open("/tmp/autotag.log", "a+")
+    print(cmd, file = f)
+    f.close()
+    __do_cmd(cmd, cwd)
 
 
 def vim_global(name, kind=str):
@@ -224,28 +230,17 @@ class AutoTag(object):  # pylint: disable=too-many-instance-attributes
                 return True
         return False
 
-    def strip_tags(self, tags_file, sources):
+    def strip_tags(self, tags_dir, tags_file, sources):
         """ Strip all tags for a given source file """
-        AutoTag.LOG.info("Stripping tags for %s from tags file %s", ",".join(sources), tags_file)
-        backup = ".SAFE"
-        source = fileinput.FileInput(files=tags_file, inplace=True, backup=backup)
-        try:
-            for line in source:
-                line = line.strip()
-                if self.good_tag(line, sources):
-                    print(line)
-        finally:
-            source.close()
-            try:
-                os.unlink(tags_file + backup)
-            except StandardError:
-                pass
+        for source in sources:
+            cmd = "sed -i \"/^[^\\t]*\\t%s\\t/d\" %s" % (source.replace('/','\/'), tags_file)
+            do_cmd(cmd, tags_dir)
 
     def update_tags_file(self, tags_dir, tags_file, sources):
         """ Strip all tags for the source file, then re-run ctags in append mode """
         if self.tags_dir:
             sources = [os.path.join(self.parents + s) for s in sources]
-        self.strip_tags(tags_file, sources)
+        self.strip_tags(tags_dir, tags_file, sources)
         if self.tags_file:
             cmd = "%s -f %s -a " % (self.ctags_cmd, self.tags_file)
         else:
@@ -260,7 +255,8 @@ class AutoTag(object):  # pylint: disable=too-many-instance-attributes
     def rebuild_tag_files(self):
         """ rebuild the tags file """
         for ((tags_dir, tags_file), sources) in self.tags.items():
-            self.update_tags_file(tags_dir, tags_file, sources)
+            if os.path.isfile(tags_file):
+                self.update_tags_file(tags_dir, tags_file, sources)
 
 def backProcess(runner):
     runner.rebuild_tag_files()
